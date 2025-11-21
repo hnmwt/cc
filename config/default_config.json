@@ -1,0 +1,138 @@
+{
+  "application": {
+    "name": "InspectionApp",
+    "version": "1.0.0",
+    "log_level": "info"
+  },
+  "camera": {
+    "device_id": 0,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "auto_exposure": true,
+    "exposure": 0,
+    "gain": 0,
+    "white_balance": "auto"
+  },
+  "image_processing": {
+    "default_pipeline": [
+      {
+        "type": "grayscale",
+        "enabled": true
+      },
+      {
+        "type": "gaussian_blur",
+        "enabled": true,
+        "params": {
+          "kernel_size": 5,
+          "sigma": 1.0
+        }
+      },
+      {
+        "type": "threshold",
+        "enabled": false,
+        "params": {
+          "threshold": 128,
+          "max_value": 255,
+          "method": "binary"
+        }
+      }
+    ]
+  },
+  "detection": {
+    "detectors": [
+      {
+        "type": "template_matcher",
+        "enabled": true,
+        "params": {
+          "threshold": 0.85,
+          "method": "cv::TM_CCOEFF_NORMED"
+        }
+      },
+      {
+        "type": "feature_detector",
+        "enabled": true,
+        "params": {
+          "min_area": 100,
+          "max_area": 10000,
+          "min_circularity": 0.5
+        }
+      }
+    ],
+    "defect_types": [
+      {
+        "type": "scratch",
+        "color": [0, 0, 255],
+        "min_confidence": 0.7
+      },
+      {
+        "type": "stain",
+        "color": [0, 255, 255],
+        "min_confidence": 0.75
+      },
+      {
+        "type": "discoloration",
+        "color": [0, 255, 0],
+        "min_confidence": 0.8
+      },
+      {
+        "type": "deformation",
+        "color": [255, 0, 0],
+        "min_confidence": 0.85
+      }
+    ]
+  },
+  "server": {
+    "http": {
+      "enabled": true,
+      "host": "0.0.0.0",
+      "port": 8080,
+      "api_base_path": "/api/v1"
+    },
+    "websocket": {
+      "enabled": true,
+      "port": 8081,
+      "ping_interval_ms": 30000
+    },
+    "external_trigger": {
+      "enabled": true,
+      "protocol": "tcp",
+      "host": "0.0.0.0",
+      "port": 5000,
+      "timeout_ms": 5000
+    }
+  },
+  "data_output": {
+    "csv": {
+      "enabled": true,
+      "output_dir": "./data/output/csv",
+      "filename_format": "inspection_%Y-%m-%d.csv",
+      "encoding": "utf-8-bom",
+      "auto_save": true
+    },
+    "images": {
+      "enabled": true,
+      "output_dir": "./data/output/images",
+      "save_original": true,
+      "save_processed": true,
+      "save_marked": true,
+      "format": "jpg",
+      "quality": 95
+    }
+  },
+  "reference_images": {
+    "directory": "./data/reference",
+    "auto_load": true
+  },
+  "ui": {
+    "window_width": 1280,
+    "window_height": 720,
+    "show_fps": true,
+    "show_processing_time": true
+  },
+  "performance": {
+    "max_threads": 4,
+    "max_queue_size": 100,
+    "enable_gpu": false
+  }
+}
