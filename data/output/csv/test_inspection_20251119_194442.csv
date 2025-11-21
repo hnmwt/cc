@@ -1,0 +1,3 @@
+﻿Timestamp,Image Path,Judgment,Total Defects,Processing Time (ms),Defect Index,Defect Type,Confidence,X,Y,Width,Height,Area,Circularity
+2025-11-19 19:44:42.783,data/input/1346653592-potato-N92z-1920x1200-MM-100.jpg,NG,2,33.5261,0,Discoloration,0.603292,320,1159,15,12,103,0.649896
+2025-11-19 19:44:42.783,data/input/1346653592-potato-N92z-1920x1200-MM-100.jpg,NG,2,33.5261,1,Stain,0.555024,1809,921,15,20,154.5,0.615059

@@ -44,7 +44,7 @@ void RestApiServer::Session::doRead() {
 void RestApiServer::Session::processRequest() {
     auto self(shared_from_this());
 
-    LOG_INFO("HTTP {} {}", request_.method_string(), request_.target());
+    LOG_INFO("HTTP {} {}", std::string(request_.method_string()), std::string(request_.target()));
 
     try {
         std::string target = std::string(request_.target());

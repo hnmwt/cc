@@ -1,0 +1,55 @@
+# Git関連
+.git
+.gitignore
+.github
+
+# ビルド成果物
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.dSYM
+
+# データ・ログファイル
+data/
+logs/
+*.log
+
+# IDE設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ドキュメント（ビルドに不要）
+*.md
+!README.md
+
+# テスト出力
+test_output/
+*.test
+
+# 一時ファイル
+*.tmp
+*.bak
+*.cache
+
+# Docker関連
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# CI/CD
+.github/
+
+# その他
+*.pdf
+*.zip
+*.tar.gz

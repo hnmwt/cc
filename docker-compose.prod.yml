@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # 外観検査サーバー（本番環境）
+  inspection_server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKER_REGISTRY}/inspection-server:${VERSION:-latest}
+    container_name: inspection_server_prod
+    ports:
+      - "8080:8080"
+      - "9000:9000"
+    volumes:
+      # 本番環境では設定ファイルのみマウント
+      - /etc/inspection_app/config:/app/config:ro
+      # データは外部ストレージ（S3等）を使用するため最小限
+      - /var/inspection_app/logs:/app/logs
+    environment:
+      - LOG_LEVEL=info
+      - CONFIG_PATH=/app/config/production_config.json
+      - CLOUD_STORAGE_ENABLED=true
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_BUCKET=${S3_BUCKET}
+    restart: always
+    networks:
+      - inspection_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQLデータベース（本番環境）
+  postgres:
+    image: postgres:15-alpine
+    container_name: inspection_db_prod
+    environment:
+      POSTGRES_DB: ${DB_NAME:-inspection_db}
+      POSTGRES_USER: ${DB_USER:-inspector}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - inspection_network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-inspector}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx リバースプロキシ（HTTPS終端）
+  nginx:
+    image: nginx:alpine
+    container_name: inspection_nginx_prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - /var/log/nginx:/var/log/nginx
+    depends_on:
+      - inspection_server
+    networks:
+      - inspection_network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  inspection_network:
+    driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
