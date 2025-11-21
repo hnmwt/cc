@@ -125,6 +125,25 @@ public:
      */
     void resetStatistics();
 
+    /**
+     * @brief 検査履歴のレコード
+     */
+    struct InspectionRecord {
+        std::string id;                     ///< 検査ID
+        std::string imagePath;              ///< 画像パス（アップロードされた画像の一時パス）
+        std::string timestamp;              ///< タイムスタンプ
+        std::string result;                 ///< 検査結果 ("OK" or "NG")
+        int defectCount;                    ///< 欠陥数
+        double processingTimeMs;            ///< 処理時間（ミリ秒）
+    };
+
+    /**
+     * @brief 検査履歴を取得
+     * @param limit 取得する最大件数（デフォルト: 100）
+     * @return 検査履歴のベクター
+     */
+    std::vector<InspectionRecord> getInspectionHistory(size_t limit = 100) const;
+
 private:
     /**
      * @brief HTTPセッション
@@ -143,6 +162,8 @@ private:
         void handleStatisticsRequest();
         void handleConfigRequest();
         void handleDetectorsRequest();
+        void handleUploadRequest();
+        void handleInspectionHistoryRequest();
 
         tcp::socket socket_;
         RestApiServer* server_;
@@ -180,6 +201,11 @@ private:
     std::atomic<size_t> totalInspections_;
     std::atomic<size_t> successfulRequests_;
     std::atomic<size_t> failedRequests_;
+
+    // 検査履歴
+    mutable std::mutex historyMutex_;                          ///< 履歴アクセス用ミューテックス
+    std::vector<InspectionRecord> inspectionHistory_;          ///< 検査履歴
+    static constexpr size_t MAX_HISTORY_SIZE = 1000;           ///< 最大履歴件数
 
     // Boost.Asio
     std::unique_ptr<net::io_context> ioContext_;

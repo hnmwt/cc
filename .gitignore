@@ -58,3 +58,4 @@ data/*.jpg
 data/*.png
 data/*.csv
 !data/.gitkeep
+data/output/

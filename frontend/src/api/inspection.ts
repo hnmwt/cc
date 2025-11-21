@@ -21,6 +21,18 @@ export interface InspectionRequest {
   image_path: string
 }
 
+export interface UploadRequest {
+  image: string // Base64エンコードされた画像データ
+  filename?: string
+}
+
+export interface UploadResponse {
+  success: boolean
+  message: string
+  image_path: string
+  image_id: string
+}
+
 export interface Defect {
   type: string
   position: { x: number; y: number }
@@ -29,10 +41,22 @@ export interface Defect {
 }
 
 export interface InspectionResult {
-  result: 'OK' | 'NG'
+  success: boolean
+  isOK: boolean
   defects: Defect[]
-  processing_time_ms: number
+  defectCount: number
+  totalTime: number
   timestamp: string
+  errorMessage?: string
+}
+
+export interface InspectionHistoryRecord {
+  id: string
+  image_path: string
+  timestamp: string
+  result: 'OK' | 'NG'
+  defect_count: number
+  processing_time_ms: number
 }
 
 export const inspectionApi = {
@@ -57,6 +81,18 @@ export const inspectionApi = {
   // 検査実行
   runInspection: async (request: InspectionRequest): Promise<InspectionResult> => {
     const { data } = await apiClient.post('/v1/inspect', request)
+    return data
+  },
+
+  // 画像アップロード
+  uploadImage: async (request: UploadRequest): Promise<UploadResponse> => {
+    const { data } = await apiClient.post('/v1/upload', request)
+    return data
+  },
+
+  // 検査履歴取得
+  getInspectionHistory: async (): Promise<InspectionHistoryRecord[]> => {
+    const { data } = await apiClient.get('/v1/inspections')
     return data
   },
 

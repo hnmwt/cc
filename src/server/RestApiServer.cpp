@@ -1,7 +1,11 @@
 #include "server/RestApiServer.h"
 #include "utils/Logger.h"
+#include "utils/Base64.h"
 #include "io/ImageIO.h"
 #include <sstream>
+#include <fstream>
+#include <chrono>
+#include <iomanip>
 
 namespace inspection {
 
@@ -52,6 +56,10 @@ void RestApiServer::Session::processRequest() {
         // ルーティング
         if (request_.method() == http::verb::post && target == "/api/v1/inspect") {
             handleInspectRequest();
+        } else if (request_.method() == http::verb::post && target == "/api/v1/upload") {
+            handleUploadRequest();
+        } else if (request_.method() == http::verb::get && target == "/api/v1/inspections") {
+            handleInspectionHistoryRequest();
         } else if (request_.method() == http::verb::get && target == "/api/v1/status") {
             handleStatusRequest();
         } else if (request_.method() == http::verb::get && target == "/api/v1/statistics") {
@@ -127,6 +135,35 @@ void RestApiServer::Session::handleInspectRequest() {
         }
 
         server_->totalInspections_++;
+
+        // 検査履歴を保存
+        {
+            std::lock_guard<std::mutex> lock(server_->historyMutex_);
+
+            InspectionRecord record;
+            record.id = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count());
+
+            // ISO 8601形式のタイムスタンプ
+            auto now = std::chrono::system_clock::now();
+            auto time_t_now = std::chrono::system_clock::to_time_t(now);
+            std::stringstream ss;
+            ss << std::put_time(std::gmtime(&time_t_now), "%Y-%m-%dT%H:%M:%SZ");
+            record.timestamp = ss.str();
+
+            record.imagePath = imagePath;
+            record.result = result.isOK ? "OK" : "NG";
+            record.defectCount = static_cast<int>(result.defects.size());
+            record.processingTimeMs = result.totalTime;
+
+            server_->inspectionHistory_.push_back(record);
+
+            // 最大件数を超えた場合、古いものを削除
+            if (server_->inspectionHistory_.size() > RestApiServer::MAX_HISTORY_SIZE) {
+                server_->inspectionHistory_.erase(server_->inspectionHistory_.begin());
+            }
+        }
 
         // 自動保存
         if (server_->autoSave_) {
@@ -399,6 +436,135 @@ void RestApiServer::resetStatistics() {
     totalInspections_ = 0;
     successfulRequests_ = 0;
     failedRequests_ = 0;
+}
+
+std::vector<RestApiServer::InspectionRecord> RestApiServer::getInspectionHistory(size_t limit) const {
+    std::lock_guard<std::mutex> lock(historyMutex_);
+
+    size_t count = std::min(limit, inspectionHistory_.size());
+    std::vector<InspectionRecord> result;
+    result.reserve(count);
+
+    // 最新のレコードから取得（逆順）
+    for (size_t i = 0; i < count; ++i) {
+        result.push_back(inspectionHistory_[inspectionHistory_.size() - 1 - i]);
+    }
+
+    return result;
+}
+
+void RestApiServer::Session::handleUploadRequest() {
+    try {
+        // リクエストボディをパース
+        auto requestBody = json::parse(request_.body());
+
+        std::string imageData;
+        std::string filename = "uploaded_image.jpg";
+
+        if (requestBody.contains("image")) {
+            imageData = requestBody["image"].get<std::string>();
+        } else {
+            json error;
+            error["error"] = "Bad Request";
+            error["message"] = "image (base64 encoded) is required";
+            sendResponse(http::status::bad_request, error.dump());
+            return;
+        }
+
+        if (requestBody.contains("filename")) {
+            filename = requestBody["filename"].get<std::string>();
+        }
+
+        // Base64デコード
+        std::vector<unsigned char> decodedData = Base64::decode(imageData);
+
+        if (decodedData.empty()) {
+            json error;
+            error["error"] = "Bad Request";
+            error["message"] = "Failed to decode base64 image data";
+            sendResponse(http::status::bad_request, error.dump());
+            return;
+        }
+
+        // 一時ファイルに保存
+        std::string uploadDir = "data/input/uploads";
+        std::filesystem::create_directories(uploadDir);
+
+        // ユニークなファイル名を生成（タイムスタンプ + オリジナルファイル名）
+        auto now = std::chrono::system_clock::now();
+        auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()
+        ).count();
+
+        std::string uniqueFilename = uploadDir + "/" + std::to_string(timestamp) + "_" + filename;
+
+        // ファイルに書き込み
+        std::ofstream outFile(uniqueFilename, std::ios::binary);
+        if (!outFile) {
+            json error;
+            error["error"] = "Internal Server Error";
+            error["message"] = "Failed to save uploaded image";
+            sendResponse(http::status::internal_server_error, error.dump());
+            return;
+        }
+
+        outFile.write(reinterpret_cast<const char*>(decodedData.data()), decodedData.size());
+        outFile.close();
+
+        LOG_INFO("Image uploaded successfully: {}", uniqueFilename);
+
+        // レスポンス
+        json response;
+        response["success"] = true;
+        response["message"] = "Image uploaded successfully";
+        response["image_path"] = uniqueFilename;
+        response["image_id"] = std::to_string(timestamp);
+
+        sendResponse(http::status::ok, response.dump());
+
+    } catch (const json::exception& e) {
+        LOG_ERROR("JSON parsing error in upload: {}", e.what());
+        json error;
+        error["error"] = "Bad Request";
+        error["message"] = "Invalid JSON format";
+        sendResponse(http::status::bad_request, error.dump());
+    } catch (const std::exception& e) {
+        LOG_ERROR("Upload error: {}", e.what());
+        json error;
+        error["error"] = "Internal Server Error";
+        error["message"] = e.what();
+        sendResponse(http::status::internal_server_error, error.dump());
+    }
+}
+
+void RestApiServer::Session::handleInspectionHistoryRequest() {
+    try {
+        // クエリパラメータから件数を取得（将来の拡張）
+        size_t limit = 100;
+
+        auto history = server_->getInspectionHistory(limit);
+
+        json response = json::array();
+        for (const auto& record : history) {
+            json item;
+            item["id"] = record.id;
+            item["image_path"] = record.imagePath;
+            item["timestamp"] = record.timestamp;
+            item["result"] = record.result;
+            item["defect_count"] = record.defectCount;
+            item["processing_time_ms"] = record.processingTimeMs;
+            response.push_back(item);
+        }
+
+        sendResponse(http::status::ok, response.dump());
+
+    } catch (const std::exception& e) {
+        LOG_ERROR("History request error: {}", e.what());
+        json error;
+        error["error"] = "Internal Server Error";
+        error["message"] = e.what();
+        sendResponse(http::status::internal_server_error, error.dump());
+    }
 }
 
 } // namespace inspection
